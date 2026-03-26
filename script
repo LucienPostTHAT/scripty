@@ -1,0 +1,1719 @@
+-- Lucien Hub
+-- LocalScript in StarterPlayer > StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Stats = game:GetService("Stats")
+local StarterGui = game:GetService("StarterGui")
+local MarketplaceService = game:GetService("MarketplaceService")
+local TextChatService = game:GetService("TextChatService")
+
+local GAMEPASS_ID = 1702730665
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
+local mouse = player:GetMouse()
+
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+player.CharacterAdded:Connect(function(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid")
+	rootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+local function refreshCharacter()
+	if not character or not character.Parent then
+		character = player.Character or player.CharacterAdded:Wait()
+	end
+	if not humanoid or not humanoid.Parent then
+		humanoid = character:WaitForChild("Humanoid")
+	end
+	if not rootPart or not rootPart.Parent then
+		rootPart = character:WaitForChild("HumanoidRootPart")
+	end
+end
+
+local THEMES = {
+	Blue = {
+		Panel = Color3.fromRGB(7, 16, 28),
+		Panel2 = Color3.fromRGB(10, 22, 37),
+		Top = Color3.fromRGB(8, 19, 31),
+		Button = Color3.fromRGB(10, 24, 40),
+		ButtonHover = Color3.fromRGB(16, 34, 57),
+		Accent = Color3.fromRGB(70, 120, 255),
+		AccentDark = Color3.fromRGB(25, 55, 115),
+		Text = Color3.fromRGB(220, 232, 255),
+		SubText = Color3.fromRGB(130, 155, 190),
+		Line = Color3.fromRGB(18, 48, 92),
+		Glow = Color3.fromRGB(70, 120, 255)
+	},
+	Red = {
+		Panel = Color3.fromRGB(18, 10, 10),
+		Panel2 = Color3.fromRGB(28, 14, 14),
+		Top = Color3.fromRGB(24, 10, 10),
+		Button = Color3.fromRGB(32, 14, 14),
+		ButtonHover = Color3.fromRGB(45, 18, 18),
+		Accent = Color3.fromRGB(255, 70, 70),
+		AccentDark = Color3.fromRGB(125, 25, 25),
+		Text = Color3.fromRGB(255, 235, 235),
+		SubText = Color3.fromRGB(205, 150, 150),
+		Line = Color3.fromRGB(90, 25, 25),
+		Glow = Color3.fromRGB(255, 70, 70)
+	},
+	White = {
+		Panel = Color3.fromRGB(235, 235, 235),
+		Panel2 = Color3.fromRGB(248, 248, 248),
+		Top = Color3.fromRGB(220, 220, 220),
+		Button = Color3.fromRGB(245, 245, 245),
+		ButtonHover = Color3.fromRGB(230, 230, 230),
+		Accent = Color3.fromRGB(90, 90, 90),
+		AccentDark = Color3.fromRGB(40, 40, 40),
+		Text = Color3.fromRGB(18, 18, 18),
+		SubText = Color3.fromRGB(90, 90, 90),
+		Line = Color3.fromRGB(180, 180, 180),
+		Glow = Color3.fromRGB(210, 210, 210)
+	}
+}
+
+local currentThemeName = "Blue"
+local COLORS = THEMES[currentThemeName]
+
+local unlocked = false
+local accessTier = "gamepass"
+
+local flying = false
+local flySpeed = 50
+local infiniteJump = false
+local noclip = false
+local walkSpeed = 16
+local tagsEnabled = false
+local currentTab = "Movement"
+local menuOpen = false
+local trackedTags = {}
+local teleportClickEnabled = false
+local clickTpDebounce = false
+local statsOverlayEnabled = true
+local overlayCorner = "Top Left"
+
+local fpsFrames = 0
+local fpsTimer = 0
+local currentFPS = 0
+
+local keys = {
+	W = false,
+	A = false,
+	S = false,
+	D = false,
+	Space = false,
+	Shift = false
+}
+
+local bodyVelocity
+local bodyGyro
+local flyConnection
+
+local allButtons = {}
+local allLabels = {}
+local allStrokes = {}
+local allGlows = {}
+local tabButtons = {}
+local friendRows = {}
+local teleportRows = {}
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "LucienHub"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 999
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local function addButton(obj)
+	table.insert(allButtons, obj)
+	return obj
+end
+
+local function addLabel(obj)
+	table.insert(allLabels, obj)
+	return obj
+end
+
+local function addStroke(obj)
+	table.insert(allStrokes, obj)
+	return obj
+end
+
+local function createGlow(parent, transparency)
+	local glow = Instance.new("UIStroke")
+	glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	glow.Thickness = 3
+	glow.Transparency = transparency or 0.82
+	glow.Parent = parent
+	table.insert(allGlows, glow)
+	return glow
+end
+
+local function makeCorner(obj, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 10)
+	c.Parent = obj
+	return c
+end
+
+local function makeStroke(obj)
+	local s = Instance.new("UIStroke")
+	s.Color = COLORS.Line
+	s.Parent = obj
+	addStroke(s)
+	return s
+end
+
+local function makeButton(parent, text, y, height)
+	local b = addButton(Instance.new("TextButton"))
+	b.Size = UDim2.new(1, 0, 0, height or 32)
+	b.Position = UDim2.new(0, 0, 0, y)
+	b.BackgroundColor3 = COLORS.Button
+	b.Text = text
+	b.TextColor3 = COLORS.Text
+	b.TextSize = 13
+	b.Font = Enum.Font.GothamSemibold
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.Parent = parent
+	makeCorner(b, 10)
+	makeStroke(b)
+	createGlow(b, 0.88)
+	return b
+end
+
+local function makeSmallButton(parent, text, xScale, xOffset, widthScale, widthOffset, y)
+	local b = addButton(Instance.new("TextButton"))
+	b.Size = UDim2.new(widthScale, widthOffset, 0, 30)
+	b.Position = UDim2.new(xScale, xOffset, 0, y)
+	b.BackgroundColor3 = COLORS.Button
+	b.Text = text
+	b.TextColor3 = COLORS.Text
+	b.TextSize = 12
+	b.Font = Enum.Font.GothamSemibold
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.Parent = parent
+	makeCorner(b, 10)
+	makeStroke(b)
+	createGlow(b, 0.88)
+	return b
+end
+
+local function makeLabel(parent, text, y)
+	local l = addLabel(Instance.new("TextLabel"))
+	l.BackgroundTransparency = 1
+	l.Size = UDim2.new(1, 0, 0, 20)
+	l.Position = UDim2.new(0, 0, 0, y)
+	l.Text = text
+	l.TextColor3 = COLORS.SubText
+	l.TextSize = 13
+	l.Font = Enum.Font.Gotham
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Parent = parent
+	return l
+end
+
+local function applyHover(button, activeFunc)
+	button.MouseEnter:Connect(function()
+		local target = COLORS.ButtonHover
+		if activeFunc and activeFunc() then
+			target = COLORS.AccentDark
+		end
+		TweenService:Create(button, TweenInfo.new(0.12), {BackgroundColor3 = target}):Play()
+	end)
+
+	button.MouseLeave:Connect(function()
+		local target = COLORS.Button
+		if activeFunc and activeFunc() then
+			target = COLORS.AccentDark
+		end
+		TweenService:Create(button, TweenInfo.new(0.12), {BackgroundColor3 = target}):Play()
+	end)
+end
+
+-- LOGIN UI
+local loginDim = Instance.new("Frame")
+loginDim.Size = UDim2.new(1, 0, 1, 0)
+loginDim.BackgroundColor3 = Color3.new(0, 0, 0)
+loginDim.BackgroundTransparency = 0.25
+loginDim.BorderSizePixel = 0
+loginDim.Parent = screenGui
+
+local loginFrame = Instance.new("Frame")
+loginFrame.Size = UDim2.new(0, 370, 0, 255)
+loginFrame.Position = UDim2.new(0.5, -185, 0.5, -127)
+loginFrame.BackgroundColor3 = COLORS.Panel
+loginFrame.BorderSizePixel = 0
+loginFrame.Parent = screenGui
+makeCorner(loginFrame, 16)
+makeStroke(loginFrame)
+createGlow(loginFrame, 0.8)
+
+local loginTop = Instance.new("Frame")
+loginTop.Size = UDim2.new(1, 0, 0, 46)
+loginTop.BackgroundColor3 = COLORS.Top
+loginTop.BorderSizePixel = 0
+loginTop.Parent = loginFrame
+makeCorner(loginTop, 16)
+
+local loginTopFix = Instance.new("Frame")
+loginTopFix.Size = UDim2.new(1, 0, 0, 16)
+loginTopFix.Position = UDim2.new(0, 0, 1, -16)
+loginTopFix.BackgroundColor3 = COLORS.Top
+loginTopFix.BorderSizePixel = 0
+loginTopFix.Parent = loginTop
+
+local loginTitle = addLabel(Instance.new("TextLabel"))
+loginTitle.BackgroundTransparency = 1
+loginTitle.Size = UDim2.new(1, -20, 1, 0)
+loginTitle.Position = UDim2.new(0, 12, 0, 0)
+loginTitle.Text = "Lucien Hub Access"
+loginTitle.TextColor3 = COLORS.Text
+loginTitle.TextSize = 18
+loginTitle.Font = Enum.Font.GothamBold
+loginTitle.TextXAlignment = Enum.TextXAlignment.Left
+loginTitle.Parent = loginTop
+
+local keyHint = addLabel(Instance.new("TextLabel"))
+keyHint.BackgroundTransparency = 1
+keyHint.Size = UDim2.new(1, -24, 0, 18)
+keyHint.Position = UDim2.new(0, 12, 0, 62)
+keyHint.Text = "Gamepass Required"
+keyHint.TextColor3 = COLORS.Text
+keyHint.TextSize = 13
+keyHint.Font = Enum.Font.GothamBold
+keyHint.TextXAlignment = Enum.TextXAlignment.Left
+keyHint.Parent = loginFrame
+
+local hiddenBox = Instance.new("Frame")
+hiddenBox.Size = UDim2.new(1, -24, 0, 38)
+hiddenBox.Position = UDim2.new(0, 12, 0, 86)
+hiddenBox.BackgroundColor3 = COLORS.Button
+hiddenBox.BorderSizePixel = 0
+hiddenBox.Parent = loginFrame
+makeCorner(hiddenBox, 10)
+makeStroke(hiddenBox)
+
+local hiddenDots = addLabel(Instance.new("TextLabel"))
+hiddenDots.BackgroundTransparency = 1
+hiddenDots.Size = UDim2.new(1, -24, 1, 0)
+hiddenDots.Position = UDim2.new(0, 12, 0, 0)
+hiddenDots.Text = "••••••••••"
+hiddenDots.TextColor3 = COLORS.Text
+hiddenDots.TextSize = 14
+hiddenDots.Font = Enum.Font.GothamSemibold
+hiddenDots.TextXAlignment = Enum.TextXAlignment.Left
+hiddenDots.Parent = hiddenBox
+
+local creatorLabel = addLabel(Instance.new("TextLabel"))
+creatorLabel.BackgroundTransparency = 1
+creatorLabel.Size = UDim2.new(1, -24, 0, 18)
+creatorLabel.Position = UDim2.new(0, 12, 0, 130)
+creatorLabel.Text = "creator is Lucien"
+creatorLabel.TextColor3 = COLORS.SubText
+creatorLabel.TextSize = 12
+creatorLabel.Font = Enum.Font.Gotham
+creatorLabel.TextXAlignment = Enum.TextXAlignment.Left
+creatorLabel.Parent = loginFrame
+
+local accessInfo = addLabel(Instance.new("TextLabel"))
+accessInfo.BackgroundTransparency = 1
+accessInfo.Size = UDim2.new(1, -24, 0, 18)
+accessInfo.Position = UDim2.new(0, 12, 0, 156)
+accessInfo.Text = ""
+accessInfo.TextColor3 = Color3.fromRGB(255, 120, 120)
+accessInfo.TextSize = 12
+accessInfo.Font = Enum.Font.Gotham
+accessInfo.TextXAlignment = Enum.TextXAlignment.Left
+accessInfo.Parent = loginFrame
+
+local unlockButton = addButton(Instance.new("TextButton"))
+unlockButton.Size = UDim2.new(1, -24, 0, 38)
+unlockButton.Position = UDim2.new(0, 12, 0, 186)
+unlockButton.BackgroundColor3 = COLORS.Button
+unlockButton.Text = "Buy / Check Gamepass"
+unlockButton.TextColor3 = COLORS.Text
+unlockButton.TextSize = 14
+unlockButton.Font = Enum.Font.GothamBold
+unlockButton.BorderSizePixel = 0
+unlockButton.Parent = loginFrame
+makeCorner(unlockButton, 10)
+makeStroke(unlockButton)
+createGlow(unlockButton, 0.84)
+
+-- OVERLAY
+local overlayFrame = Instance.new("Frame")
+overlayFrame.Name = "StatsOverlay"
+overlayFrame.Size = UDim2.new(0, 150, 0, 58)
+overlayFrame.BackgroundColor3 = COLORS.Panel
+overlayFrame.BorderSizePixel = 0
+overlayFrame.Visible = false
+overlayFrame.Parent = screenGui
+makeCorner(overlayFrame, 12)
+makeStroke(overlayFrame)
+createGlow(overlayFrame, 0.78)
+
+local fpsLabel = addLabel(Instance.new("TextLabel"))
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Size = UDim2.new(1, -12, 0, 22)
+fpsLabel.Position = UDim2.new(0, 8, 0, 6)
+fpsLabel.Text = "FPS: 0"
+fpsLabel.TextColor3 = COLORS.Text
+fpsLabel.TextSize = 13
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.Parent = overlayFrame
+
+local pingLabel = addLabel(Instance.new("TextLabel"))
+pingLabel.BackgroundTransparency = 1
+pingLabel.Size = UDim2.new(1, -12, 0, 22)
+pingLabel.Position = UDim2.new(0, 8, 0, 30)
+pingLabel.Text = "Ping: 0 ms"
+pingLabel.TextColor3 = COLORS.SubText
+pingLabel.TextSize = 12
+pingLabel.Font = Enum.Font.Gotham
+pingLabel.TextXAlignment = Enum.TextXAlignment.Left
+pingLabel.Parent = overlayFrame
+
+local function getOverlayPosition(cornerName)
+	if cornerName == "Top Left" then
+		return UDim2.new(0, 12, 0, 12)
+	elseif cornerName == "Top Right" then
+		return UDim2.new(1, -162, 0, 12)
+	elseif cornerName == "Bottom Left" then
+		return UDim2.new(0, 12, 1, -70)
+	else
+		return UDim2.new(1, -162, 1, -70)
+	end
+end
+
+local function setOverlayCorner(cornerName)
+	overlayCorner = cornerName
+	TweenService:Create(
+		overlayFrame,
+		TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Position = getOverlayPosition(cornerName)}
+	):Play()
+end
+
+overlayFrame.Position = getOverlayPosition(overlayCorner)
+
+-- FOV CIRCLE
+local fovCircle = Instance.new("Frame")
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+fovCircle.Size = UDim2.new(0, 180, 0, 180)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Visible = false
+fovCircle.Parent = screenGui
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color = COLORS.Accent
+fovStroke.Thickness = 2
+fovStroke.Transparency = 0.15
+fovStroke.Parent = fovCircle
+addStroke(fovStroke)
+createGlow(fovCircle, 0.82)
+makeCorner(fovCircle, 999)
+
+-- MAIN MENU
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 430, 0, 470)
+mainFrame.Position = UDim2.new(0.5, -215, 0.5, -235)
+mainFrame.BackgroundColor3 = COLORS.Panel
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
+mainFrame.Parent = screenGui
+makeCorner(mainFrame, 16)
+makeStroke(mainFrame)
+createGlow(mainFrame, 0.8)
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 48)
+titleBar.BackgroundColor3 = COLORS.Top
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+makeCorner(titleBar, 16)
+
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0, 18)
+titleFix.Position = UDim2.new(0, 0, 1, -18)
+titleFix.BackgroundColor3 = COLORS.Top
+titleFix.BorderSizePixel = 0
+titleFix.Parent = titleBar
+
+local title = addLabel(Instance.new("TextLabel"))
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 14, 0, 0)
+title.Size = UDim2.new(1, -80, 1, 0)
+title.Text = "Lucien Hub"
+title.TextColor3 = COLORS.Text
+title.TextSize = 18
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local titleSub = addLabel(Instance.new("TextLabel"))
+titleSub.BackgroundTransparency = 1
+titleSub.Position = UDim2.new(0, 128, 0, 0)
+titleSub.Size = UDim2.new(0, 220, 1, 0)
+titleSub.Text = "clean ui"
+titleSub.TextColor3 = COLORS.SubText
+titleSub.TextSize = 12
+titleSub.Font = Enum.Font.Gotham
+titleSub.TextXAlignment = Enum.TextXAlignment.Left
+titleSub.Parent = titleBar
+
+local minimizeButton = addButton(Instance.new("TextButton"))
+minimizeButton.Size = UDim2.new(0, 30, 0, 24)
+minimizeButton.Position = UDim2.new(1, -42, 0.5, -12)
+minimizeButton.BackgroundColor3 = COLORS.Button
+minimizeButton.Text = "—"
+minimizeButton.TextColor3 = COLORS.Text
+minimizeButton.TextSize = 18
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Parent = titleBar
+makeCorner(minimizeButton, 8)
+makeStroke(minimizeButton)
+createGlow(minimizeButton, 0.82)
+
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1, -20, 0, 34)
+tabBar.Position = UDim2.new(0, 10, 0, 58)
+tabBar.BackgroundTransparency = 1
+tabBar.Parent = mainFrame
+
+local contentHolder = Instance.new("Frame")
+contentHolder.Size = UDim2.new(1, -20, 1, -124)
+contentHolder.Position = UDim2.new(0, 10, 0, 100)
+contentHolder.BackgroundColor3 = COLORS.Panel2
+contentHolder.BorderSizePixel = 0
+contentHolder.Parent = mainFrame
+makeCorner(contentHolder, 14)
+makeStroke(contentHolder)
+createGlow(contentHolder, 0.84)
+
+local infoLabel = addLabel(Instance.new("TextLabel"))
+infoLabel.BackgroundTransparency = 1
+infoLabel.Size = UDim2.new(1, -20, 0, 18)
+infoLabel.Position = UDim2.new(0, 10, 1, -22)
+infoLabel.Text = "RightShift = toggle menu"
+infoLabel.TextColor3 = COLORS.SubText
+infoLabel.TextSize = 11
+infoLabel.Font = Enum.Font.Gotham
+infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+infoLabel.Parent = mainFrame
+
+-- PAGES
+local movementPage = Instance.new("Frame")
+movementPage.Size = UDim2.new(1, 0, 1, 0)
+movementPage.BackgroundTransparency = 1
+movementPage.Parent = contentHolder
+
+local visualsPage = Instance.new("Frame")
+visualsPage.Size = UDim2.new(1, 0, 1, 0)
+visualsPage.BackgroundTransparency = 1
+visualsPage.Visible = false
+visualsPage.Parent = contentHolder
+
+local screenPage = Instance.new("Frame")
+screenPage.Size = UDim2.new(1, 0, 1, 0)
+screenPage.BackgroundTransparency = 1
+screenPage.Visible = false
+screenPage.Parent = contentHolder
+
+local teleportPage = Instance.new("Frame")
+teleportPage.Size = UDim2.new(1, 0, 1, 0)
+teleportPage.BackgroundTransparency = 1
+teleportPage.Visible = false
+teleportPage.Parent = contentHolder
+
+local friendsPage = Instance.new("Frame")
+friendsPage.Size = UDim2.new(1, 0, 1, 0)
+friendsPage.BackgroundTransparency = 1
+friendsPage.Visible = false
+friendsPage.Parent = contentHolder
+
+local themesPage = Instance.new("Frame")
+themesPage.Size = UDim2.new(1, 0, 1, 0)
+themesPage.BackgroundTransparency = 1
+themesPage.Visible = false
+themesPage.Parent = contentHolder
+
+local creditsPage = Instance.new("Frame")
+creditsPage.Size = UDim2.new(1, 0, 1, 0)
+creditsPage.BackgroundTransparency = 1
+creditsPage.Visible = false
+creditsPage.Parent = contentHolder
+
+-- TAB BUTTONS
+local movementTab = makeSmallButton(tabBar, "🚀 Move", 0.00, 0, 0.135, -3, 0)
+local visualsTab  = makeSmallButton(tabBar, "👁 Visuals", 0.145, 0, 0.135, -3, 0)
+local screenTab   = makeSmallButton(tabBar, "🖥 Screen", 0.29, 0, 0.135, -3, 0)
+local teleportTab = makeSmallButton(tabBar, "📍 TP", 0.435, 0, 0.135, -3, 0)
+local friendsTab  = makeSmallButton(tabBar, "🤝 Friends", 0.58, 0, 0.135, -3, 0)
+local themesTab   = makeSmallButton(tabBar, "🎨 Themes", 0.725, 0, 0.135, -3, 0)
+local creditsTab  = makeSmallButton(tabBar, "⭐ Credits", 0.87, 0, 0.13, 0, 0)
+
+tabButtons = {
+	Movement = movementTab,
+	Visuals = visualsTab,
+	Screen = screenTab,
+	Teleport = teleportTab,
+	Friends = friendsTab,
+	Themes = themesTab,
+	Credits = creditsTab
+}
+
+-- MOVEMENT UI
+local flyButton = makeButton(movementPage, "🚀 Fly: OFF", 0, 34)
+local speedLabel = makeLabel(movementPage, "Flight Speed: 50", 44)
+local speedMinus = makeSmallButton(movementPage, "- Speed", 0, 0, 0.48, -2, 68)
+local speedPlus = makeSmallButton(movementPage, "+ Speed", 0.52, 0, 0.48, -2, 68)
+local jumpButton = makeButton(movementPage, "🦘 Infinite Jump: OFF", 108, 32)
+local noclipButton = makeButton(movementPage, "🧱 Noclip: OFF", 146, 32)
+local walkLabel = makeLabel(movementPage, "WalkSpeed: 16", 186)
+local walkMinus = makeSmallButton(movementPage, "- WalkSpeed", 0, 0, 0.48, -2, 210)
+local walkPlus = makeSmallButton(movementPage, "+ WalkSpeed", 0.52, 0, 0.48, -2, 210)
+
+-- VISUALS UI
+local tagsButton = makeButton(visualsPage, "🏷 Tags: OFF", 0, 34)
+local statsButton = makeButton(visualsPage, "📊 Stats Overlay: ON", 42, 32)
+local overlayLabel = makeLabel(visualsPage, "Overlay Corner", 84)
+local topLeftButton = makeSmallButton(visualsPage, "Top Left", 0, 0, 0.48, -2, 108)
+local topRightButton = makeSmallButton(visualsPage, "Top Right", 0.52, 0, 0.48, -2, 108)
+local bottomLeftButton = makeSmallButton(visualsPage, "Bottom Left", 0, 0, 0.48, -2, 146)
+local bottomRightButton = makeSmallButton(visualsPage, "Bottom Right", 0.52, 0, 0.48, -2, 146)
+
+-- SCREEN UI
+local fovLabelUI = makeLabel(screenPage, "Camera FOV: 70", 0)
+local fovMinus = makeSmallButton(screenPage, "- FOV", 0, 0, 0.48, -2, 24)
+local fovPlus = makeSmallButton(screenPage, "+ FOV", 0.52, 0, 0.48, -2, 24)
+local circleToggle = makeButton(screenPage, "⭕ FOV Circle: ON", 64, 32)
+local circleLabel = makeLabel(screenPage, "FOV Circle Size: 180", 106)
+local circleMinus = makeSmallButton(screenPage, "- Circle", 0, 0, 0.48, -2, 130)
+local circlePlus = makeSmallButton(screenPage, "+ Circle", 0.52, 0, 0.48, -2, 130)
+
+-- TELEPORT UI
+local tpTitle = makeLabel(teleportPage, "Click Teleport", 0)
+tpTitle.TextColor3 = COLORS.Text
+tpTitle.Font = Enum.Font.GothamBold
+
+local tpButton = makeButton(teleportPage, "📍 Click Teleport: OFF", 30, 34)
+
+local tpPlayersTitle = makeLabel(teleportPage, "Teleport To Player", 72)
+tpPlayersTitle.TextColor3 = COLORS.Text
+tpPlayersTitle.Font = Enum.Font.GothamBold
+
+local tpScroll = Instance.new("ScrollingFrame")
+tpScroll.Size = UDim2.new(1, 0, 0, 190)
+tpScroll.Position = UDim2.new(0, 0, 0, 98)
+tpScroll.BackgroundTransparency = 1
+tpScroll.BorderSizePixel = 0
+tpScroll.ScrollBarThickness = 6
+tpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+tpScroll.Parent = teleportPage
+
+local tpLayout = Instance.new("UIListLayout")
+tpLayout.Padding = UDim.new(0, 6)
+tpLayout.Parent = tpScroll
+
+-- FRIENDS UI
+local friendsTitle = makeLabel(friendsPage, "Players In Server", 0)
+friendsTitle.TextColor3 = COLORS.Text
+friendsTitle.Font = Enum.Font.GothamBold
+
+local refreshFriendsButton = makeButton(friendsPage, "🔄 Refresh List", 28, 30)
+
+local friendsScroll = Instance.new("ScrollingFrame")
+friendsScroll.Size = UDim2.new(1, 0, 0, 150)
+friendsScroll.Position = UDim2.new(0, 0, 0, 68)
+friendsScroll.BackgroundTransparency = 1
+friendsScroll.BorderSizePixel = 0
+friendsScroll.ScrollBarThickness = 6
+friendsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+friendsScroll.Parent = friendsPage
+
+local friendsLayout = Instance.new("UIListLayout")
+friendsLayout.Padding = UDim.new(0, 6)
+friendsLayout.Parent = friendsScroll
+
+local chatTitle = makeLabel(friendsPage, "Hub Chat Box", 224)
+chatTitle.TextColor3 = COLORS.Text
+chatTitle.Font = Enum.Font.GothamBold
+
+local chatBox = Instance.new("TextBox")
+chatBox.Size = UDim2.new(0.72, 0, 0, 34)
+chatBox.Position = UDim2.new(0, 0, 0, 252)
+chatBox.BackgroundColor3 = COLORS.Button
+chatBox.TextColor3 = COLORS.Text
+chatBox.PlaceholderText = "Type chat message..."
+chatBox.PlaceholderColor3 = COLORS.SubText
+chatBox.Text = ""
+chatBox.ClearTextOnFocus = false
+chatBox.TextSize = 13
+chatBox.Font = Enum.Font.GothamSemibold
+chatBox.BorderSizePixel = 0
+chatBox.Parent = friendsPage
+makeCorner(chatBox, 10)
+makeStroke(chatBox)
+createGlow(chatBox, 0.9)
+
+local sendChatButton = makeButton(friendsPage, "Send", 252, 34)
+sendChatButton.Size = UDim2.new(0.26, 0, 0, 34)
+sendChatButton.Position = UDim2.new(0.74, 0, 0, 252)
+
+local chatInfo = makeLabel(friendsPage, "", 292)
+chatInfo.TextColor3 = COLORS.SubText
+
+-- THEMES UI
+local themeTitle = makeLabel(themesPage, "Choose Theme", 0)
+themeTitle.TextColor3 = COLORS.Text
+themeTitle.Font = Enum.Font.GothamBold
+
+local blueThemeButton = makeButton(themesPage, "💙 Blue Theme", 32, 34)
+local redThemeButton = makeButton(themesPage, "❤️ Red / Black Theme", 74, 34)
+local whiteThemeButton = makeButton(themesPage, "🤍 White / Black Theme", 116, 34)
+
+local themeDesc = makeLabel(themesPage, "Themes update the menu, overlay, tags, and glow accents.", 160)
+themeDesc.TextWrapped = true
+themeDesc.Size = UDim2.new(1, 0, 0, 42)
+
+-- CREDITS UI
+local creditsTitle = makeLabel(creditsPage, "Credits", 0)
+creditsTitle.TextColor3 = COLORS.Text
+creditsTitle.Font = Enum.Font.GothamBold
+
+local creator1 = makeLabel(creditsPage, "Roblox: nonmindedlife", 34)
+creator1.TextColor3 = COLORS.Text
+creator1.Font = Enum.Font.GothamSemibold
+
+local creator2 = makeLabel(creditsPage, "Discord: cazcx", 62)
+creator2.TextColor3 = COLORS.Text
+creator2.Font = Enum.Font.GothamSemibold
+
+local discordInfo = makeLabel(creditsPage, "Discord Invite", 102)
+discordInfo.TextColor3 = COLORS.SubText
+
+local discordBox = Instance.new("TextBox")
+discordBox.Size = UDim2.new(1, 0, 0, 34)
+discordBox.Position = UDim2.new(0, 0, 0, 126)
+discordBox.BackgroundColor3 = COLORS.Button
+discordBox.TextColor3 = COLORS.Text
+discordBox.Text = "https://discord.gg/AjYNgbpDdx"
+discordBox.ClearTextOnFocus = false
+discordBox.TextEditable = false
+discordBox.TextSize = 12
+discordBox.Font = Enum.Font.GothamSemibold
+discordBox.BorderSizePixel = 0
+discordBox.Parent = creditsPage
+makeCorner(discordBox, 10)
+makeStroke(discordBox)
+createGlow(discordBox, 0.9)
+
+local copyHint = makeLabel(creditsPage, "Highlight and copy the invite from the box above.", 166)
+copyHint.TextWrapped = true
+copyHint.Size = UDim2.new(1, 0, 0, 34)
+
+local joinDiscordButton = makeButton(creditsPage, "Join Discord", 208, 34)
+
+-- HOVERS
+local function overlayButtonActive(name)
+	return function()
+		return overlayCorner == name
+	end
+end
+
+applyHover(movementTab, function() return currentTab == "Movement" end)
+applyHover(visualsTab, function() return currentTab == "Visuals" end)
+applyHover(screenTab, function() return currentTab == "Screen" end)
+applyHover(teleportTab, function() return currentTab == "Teleport" end)
+applyHover(friendsTab, function() return currentTab == "Friends" end)
+applyHover(themesTab, function() return currentTab == "Themes" end)
+applyHover(creditsTab, function() return currentTab == "Credits" end)
+
+applyHover(flyButton, function() return flying end)
+applyHover(jumpButton, function() return infiniteJump end)
+applyHover(noclipButton, function() return noclip end)
+applyHover(tagsButton, function() return tagsEnabled end)
+applyHover(statsButton, function() return statsOverlayEnabled end)
+applyHover(circleToggle, function() return fovCircle.Visible end)
+applyHover(tpButton, function() return teleportClickEnabled end)
+applyHover(blueThemeButton, function() return currentThemeName == "Blue" end)
+applyHover(redThemeButton, function() return currentThemeName == "Red" end)
+applyHover(whiteThemeButton, function() return currentThemeName == "White" end)
+applyHover(topLeftButton, overlayButtonActive("Top Left"))
+applyHover(topRightButton, overlayButtonActive("Top Right"))
+applyHover(bottomLeftButton, overlayButtonActive("Bottom Left"))
+applyHover(bottomRightButton, overlayButtonActive("Bottom Right"))
+applyHover(speedMinus)
+applyHover(speedPlus)
+applyHover(walkMinus)
+applyHover(walkPlus)
+applyHover(fovMinus)
+applyHover(fovPlus)
+applyHover(circleMinus)
+applyHover(circlePlus)
+applyHover(minimizeButton)
+applyHover(refreshFriendsButton)
+applyHover(joinDiscordButton)
+applyHover(sendChatButton)
+
+local function updateTabColors()
+	for name, button in pairs(tabButtons) do
+		button.BackgroundColor3 = (currentTab == name) and COLORS.AccentDark or COLORS.Button
+	end
+end
+
+local function updateOverlayCornerButtonColors()
+	topLeftButton.BackgroundColor3 = overlayCorner == "Top Left" and COLORS.AccentDark or COLORS.Button
+	topRightButton.BackgroundColor3 = overlayCorner == "Top Right" and COLORS.AccentDark or COLORS.Button
+	bottomLeftButton.BackgroundColor3 = overlayCorner == "Bottom Left" and COLORS.AccentDark or COLORS.Button
+	bottomRightButton.BackgroundColor3 = overlayCorner == "Bottom Right" and COLORS.AccentDark or COLORS.Button
+end
+
+local function updateThemeButtonColors()
+	blueThemeButton.BackgroundColor3 = currentThemeName == "Blue" and COLORS.AccentDark or COLORS.Button
+	redThemeButton.BackgroundColor3 = currentThemeName == "Red" and COLORS.AccentDark or COLORS.Button
+	whiteThemeButton.BackgroundColor3 = currentThemeName == "White" and COLORS.AccentDark or COLORS.Button
+end
+
+local function animatePageIn(page)
+	page.Visible = true
+	page.Position = UDim2.new(0, 16, 0, 0)
+	TweenService:Create(
+		page,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Position = UDim2.new(0, 0, 0, 0)}
+	):Play()
+end
+
+local function clearFriendRows()
+	for _, row in ipairs(friendRows) do
+		if row and row.Parent then
+			row:Destroy()
+		end
+	end
+	table.clear(friendRows)
+end
+
+local function clearTeleportRows()
+	for _, row in ipairs(teleportRows) do
+		if row and row.Parent then
+			row:Destroy()
+		end
+	end
+	table.clear(teleportRows)
+end
+
+local function promptFriendRequest(targetPlayer)
+	pcall(function()
+		StarterGui:SetCore("PromptSendFriendRequest", targetPlayer)
+	end)
+end
+
+local function buildFriendsList()
+	clearFriendRows()
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, -6, 0, 36)
+			row.BackgroundColor3 = COLORS.Button
+			row.BorderSizePixel = 0
+			row.Parent = friendsScroll
+			makeCorner(row, 10)
+			table.insert(friendRows, row)
+
+			local rowStroke = Instance.new("UIStroke")
+			rowStroke.Color = COLORS.Line
+			rowStroke.Parent = row
+
+			local rowGlow = Instance.new("UIStroke")
+			rowGlow.Color = COLORS.Glow
+			rowGlow.Thickness = 3
+			rowGlow.Transparency = 0.9
+			rowGlow.Parent = row
+
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Size = UDim2.new(0.55, 0, 1, 0)
+			nameLabel.Position = UDim2.new(0, 10, 0, 0)
+			nameLabel.Text = otherPlayer.DisplayName .. " (@" .. otherPlayer.Name .. ")"
+			nameLabel.TextColor3 = COLORS.Text
+			nameLabel.TextSize = 12
+			nameLabel.Font = Enum.Font.GothamSemibold
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.Parent = row
+
+			local addButton = Instance.new("TextButton")
+			addButton.Size = UDim2.new(0, 128, 0, 24)
+			addButton.Position = UDim2.new(1, -136, 0.5, -12)
+			addButton.BackgroundColor3 = COLORS.AccentDark
+			addButton.Text = "Send Request"
+			addButton.TextColor3 = COLORS.Text
+			addButton.TextSize = 12
+			addButton.Font = Enum.Font.GothamBold
+			addButton.BorderSizePixel = 0
+			addButton.Parent = row
+			makeCorner(addButton, 8)
+
+			local addStrokeLocal = Instance.new("UIStroke")
+			addStrokeLocal.Color = COLORS.Line
+			addStrokeLocal.Parent = addButton
+
+			addButton.MouseButton1Click:Connect(function()
+				promptFriendRequest(otherPlayer)
+			end)
+		end
+	end
+
+	task.wait()
+	friendsScroll.CanvasSize = UDim2.new(0, 0, 0, friendsLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function buildTeleportList()
+	clearTeleportRows()
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, -6, 0, 36)
+			row.BackgroundColor3 = COLORS.Button
+			row.BorderSizePixel = 0
+			row.Parent = tpScroll
+			makeCorner(row, 10)
+			table.insert(teleportRows, row)
+
+			local rowStroke = Instance.new("UIStroke")
+			rowStroke.Color = COLORS.Line
+			rowStroke.Parent = row
+
+			local rowGlow = Instance.new("UIStroke")
+			rowGlow.Color = COLORS.Glow
+			rowGlow.Thickness = 3
+			rowGlow.Transparency = 0.9
+			rowGlow.Parent = row
+
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Size = UDim2.new(0.55, 0, 1, 0)
+			nameLabel.Position = UDim2.new(0, 10, 0, 0)
+			nameLabel.Text = otherPlayer.DisplayName
+			nameLabel.TextColor3 = COLORS.Text
+			nameLabel.TextSize = 12
+			nameLabel.Font = Enum.Font.GothamSemibold
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.Parent = row
+
+			local tpPlayerButton = Instance.new("TextButton")
+			tpPlayerButton.Size = UDim2.new(0, 110, 0, 24)
+			tpPlayerButton.Position = UDim2.new(1, -118, 0.5, -12)
+			tpPlayerButton.BackgroundColor3 = COLORS.AccentDark
+			tpPlayerButton.Text = "Teleport"
+			tpPlayerButton.TextColor3 = COLORS.Text
+			tpPlayerButton.TextSize = 12
+			tpPlayerButton.Font = Enum.Font.GothamBold
+			tpPlayerButton.BorderSizePixel = 0
+			tpPlayerButton.Parent = row
+			makeCorner(tpPlayerButton, 8)
+
+			local tpPlayerStroke = Instance.new("UIStroke")
+			tpPlayerStroke.Color = COLORS.Line
+			tpPlayerStroke.Parent = tpPlayerButton
+
+			tpPlayerButton.MouseButton1Click:Connect(function()
+				refreshCharacter()
+				local targetCharacter = otherPlayer.Character
+				if rootPart and targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
+					rootPart.CFrame = targetCharacter.HumanoidRootPart.CFrame + Vector3.new(2, 0, 2)
+				end
+			end)
+		end
+	end
+
+	task.wait()
+	tpScroll.CanvasSize = UDim2.new(0, 0, 0, tpLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function getChatChannel()
+	local channels = TextChatService:FindFirstChild("TextChannels")
+	if not channels then
+		return nil
+	end
+
+	local general = channels:FindFirstChild("RBXGeneral")
+	if general and general:IsA("TextChannel") then
+		return general
+	end
+
+	for _, child in ipairs(channels:GetChildren()) do
+		if child:IsA("TextChannel") then
+			return child
+		end
+	end
+
+	return nil
+end
+
+local function sendChatMessage()
+	local message = chatBox.Text
+	if message == "" then
+		chatInfo.Text = "Type a message first."
+		return
+	end
+
+	local channel = getChatChannel()
+	if not channel then
+		chatInfo.Text = "No chat channel found."
+		return
+	end
+
+	local ok = pcall(function()
+		channel:SendAsync(message)
+	end)
+
+	if ok then
+		chatInfo.Text = "Sent."
+		chatBox.Text = ""
+	else
+		chatInfo.Text = "Could not send message."
+	end
+end
+
+sendChatButton.MouseButton1Click:Connect(sendChatMessage)
+chatBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		sendChatMessage()
+	end
+end)
+
+local function switchTab(tabName)
+	currentTab = tabName
+	movementPage.Visible = false
+	visualsPage.Visible = false
+	screenPage.Visible = false
+	teleportPage.Visible = false
+	friendsPage.Visible = false
+	themesPage.Visible = false
+	creditsPage.Visible = false
+
+	if tabName == "Movement" then
+		animatePageIn(movementPage)
+	elseif tabName == "Visuals" then
+		animatePageIn(visualsPage)
+	elseif tabName == "Screen" then
+		animatePageIn(screenPage)
+	elseif tabName == "Teleport" then
+		buildTeleportList()
+		animatePageIn(teleportPage)
+	elseif tabName == "Friends" then
+		buildFriendsList()
+		animatePageIn(friendsPage)
+	elseif tabName == "Themes" then
+		animatePageIn(themesPage)
+	elseif tabName == "Credits" then
+		animatePageIn(creditsPage)
+	end
+
+	updateTabColors()
+end
+
+movementTab.MouseButton1Click:Connect(function() switchTab("Movement") end)
+visualsTab.MouseButton1Click:Connect(function() switchTab("Visuals") end)
+screenTab.MouseButton1Click:Connect(function() switchTab("Screen") end)
+teleportTab.MouseButton1Click:Connect(function() switchTab("Teleport") end)
+friendsTab.MouseButton1Click:Connect(function() switchTab("Friends") end)
+themesTab.MouseButton1Click:Connect(function() switchTab("Themes") end)
+creditsTab.MouseButton1Click:Connect(function() switchTab("Credits") end)
+refreshFriendsButton.MouseButton1Click:Connect(buildFriendsList)
+
+joinDiscordButton.MouseButton1Click:Connect(function()
+	discordBox.TextEditable = true
+	discordBox:CaptureFocus()
+	discordBox.SelectionStart = 1
+	discordBox.CursorPosition = #discordBox.Text + 1
+	task.wait()
+	discordBox.TextEditable = false
+end)
+
+local function recolorTags()
+	for _, data in pairs(trackedTags) do
+		if data.bg then
+			data.bg.BackgroundColor3 = COLORS.Top
+		end
+		if data.bgStroke then
+			data.bgStroke.Color = COLORS.Line
+		end
+		if data.nameLabel then
+			data.nameLabel.TextColor3 = COLORS.Text
+		end
+		if data.distanceLabel then
+			data.distanceLabel.TextColor3 = COLORS.SubText
+		end
+	end
+end
+
+local function applyTheme(themeName)
+	currentThemeName = themeName
+	COLORS = THEMES[themeName]
+
+	loginFrame.BackgroundColor3 = COLORS.Panel
+	loginTop.BackgroundColor3 = COLORS.Top
+	loginTopFix.BackgroundColor3 = COLORS.Top
+	hiddenBox.BackgroundColor3 = COLORS.Button
+	unlockButton.BackgroundColor3 = COLORS.Button
+
+	mainFrame.BackgroundColor3 = COLORS.Panel
+	titleBar.BackgroundColor3 = COLORS.Top
+	titleFix.BackgroundColor3 = COLORS.Top
+	contentHolder.BackgroundColor3 = COLORS.Panel2
+	overlayFrame.BackgroundColor3 = COLORS.Panel
+	discordBox.BackgroundColor3 = COLORS.Button
+	chatBox.BackgroundColor3 = COLORS.Button
+
+	for _, button in ipairs(allButtons) do
+		if button and button.Parent then
+			button.TextColor3 = COLORS.Text
+		end
+	end
+
+	keyHint.TextColor3 = COLORS.Text
+	hiddenDots.TextColor3 = COLORS.Text
+	creatorLabel.TextColor3 = COLORS.SubText
+	loginTitle.TextColor3 = COLORS.Text
+	title.TextColor3 = COLORS.Text
+	titleSub.TextColor3 = COLORS.SubText
+	infoLabel.TextColor3 = COLORS.SubText
+	fpsLabel.TextColor3 = COLORS.Text
+	pingLabel.TextColor3 = COLORS.SubText
+	friendsTitle.TextColor3 = COLORS.Text
+	tpTitle.TextColor3 = COLORS.Text
+	tpPlayersTitle.TextColor3 = COLORS.Text
+	themeTitle.TextColor3 = COLORS.Text
+	themeDesc.TextColor3 = COLORS.SubText
+	overlayLabel.TextColor3 = COLORS.SubText
+	fovLabelUI.TextColor3 = COLORS.SubText
+	circleLabel.TextColor3 = COLORS.SubText
+	speedLabel.TextColor3 = COLORS.SubText
+	walkLabel.TextColor3 = COLORS.SubText
+	tpDesc.TextColor3 = COLORS.SubText
+	creditsTitle.TextColor3 = COLORS.Text
+	creator1.TextColor3 = COLORS.Text
+	creator2.TextColor3 = COLORS.Text
+	discordInfo.TextColor3 = COLORS.SubText
+	discordBox.TextColor3 = COLORS.Text
+	copyHint.TextColor3 = COLORS.SubText
+	chatTitle.TextColor3 = COLORS.Text
+	chatBox.TextColor3 = COLORS.Text
+	chatBox.PlaceholderColor3 = COLORS.SubText
+	chatInfo.TextColor3 = COLORS.SubText
+
+	for _, s in ipairs(allStrokes) do
+		if s and s.Parent then
+			s.Color = COLORS.Line
+		end
+	end
+
+	for _, g in ipairs(allGlows) do
+		if g and g.Parent then
+			g.Color = COLORS.Glow
+		end
+	end
+
+	fovStroke.Color = COLORS.Accent
+
+	updateTabColors()
+	updateOverlayCornerButtonColors()
+	updateThemeButtonColors()
+
+	flyButton.BackgroundColor3 = flying and COLORS.AccentDark or COLORS.Button
+	jumpButton.BackgroundColor3 = infiniteJump and COLORS.AccentDark or COLORS.Button
+	noclipButton.BackgroundColor3 = noclip and COLORS.AccentDark or COLORS.Button
+	tagsButton.BackgroundColor3 = tagsEnabled and COLORS.AccentDark or COLORS.Button
+	statsButton.BackgroundColor3 = statsOverlayEnabled and COLORS.AccentDark or COLORS.Button
+	circleToggle.BackgroundColor3 = fovCircle.Visible and COLORS.AccentDark or COLORS.Button
+	tpButton.BackgroundColor3 = teleportClickEnabled and COLORS.AccentDark or COLORS.Button
+
+	recolorTags()
+	if currentTab == "Friends" then
+		buildFriendsList()
+	elseif currentTab == "Teleport" then
+		buildTeleportList()
+	end
+end
+
+local function setMenuOpen(state)
+	menuOpen = state
+	mainFrame.Visible = unlocked and state
+end
+
+local function setUnlockedState(state)
+	unlocked = state
+	menuOpen = state
+	mainFrame.Visible = state
+	overlayFrame.Visible = state and statsOverlayEnabled
+	fovCircle.Visible = state
+
+	loginFrame.Visible = not state
+	loginDim.Visible = not state
+
+	if state then
+		titleSub.Text = "gamepass access"
+		accessInfo.Text = ""
+	else
+		titleSub.Text = "clean ui"
+	end
+end
+
+local function playerOwnsPass()
+	local success, ownsPass = pcall(function()
+		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, GAMEPASS_ID)
+	end)
+	if success then
+		return ownsPass
+	end
+	return false
+end
+
+local function unlockHub()
+	if playerOwnsPass() then
+		setUnlockedState(true)
+	else
+		accessInfo.Text = "Gamepass required to use Lucien Hub."
+		MarketplaceService:PromptGamePassPurchase(player, GAMEPASS_ID)
+	end
+end
+
+unlockButton.MouseButton1Click:Connect(unlockHub)
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(userId, gamePassId, wasPurchased)
+	if userId == player.UserId and gamePassId == GAMEPASS_ID then
+		if wasPurchased or playerOwnsPass() then
+			setUnlockedState(true)
+		end
+	end
+end)
+
+local dragging = false
+local dragStart
+local startPos
+local normalSize = mainFrame.Size
+local minimized = false
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UIS.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+minimizeButton.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	local targetSize = minimized and UDim2.new(0, 430, 0, 48) or normalSize
+
+	tabBar.Visible = not minimized
+	contentHolder.Visible = not minimized
+	infoLabel.Visible = not minimized
+
+	TweenService:Create(
+		mainFrame,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Size = targetSize}
+	):Play()
+end)
+
+local function stopFlying()
+	flying = false
+	flyButton.Text = "🚀 Fly: OFF"
+	flyButton.BackgroundColor3 = COLORS.Button
+
+	if flyConnection then
+		flyConnection:Disconnect()
+		flyConnection = nil
+	end
+	if bodyVelocity then
+		bodyVelocity:Destroy()
+		bodyVelocity = nil
+	end
+	if bodyGyro then
+		bodyGyro:Destroy()
+		bodyGyro = nil
+	end
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+end
+
+local function startFlying()
+	refreshCharacter()
+	if not humanoid or not rootPart then return end
+
+	flying = true
+	flyButton.Text = "🚀 Fly: ON"
+	flyButton.BackgroundColor3 = COLORS.AccentDark
+
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+	bodyVelocity.Velocity = Vector3.zero
+	bodyVelocity.Parent = rootPart
+
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+	bodyGyro.P = 10000
+	bodyGyro.CFrame = rootPart.CFrame
+	bodyGyro.Parent = rootPart
+
+	humanoid.PlatformStand = true
+
+	flyConnection = RunService.RenderStepped:Connect(function()
+		refreshCharacter()
+
+		if not flying or not rootPart or not camera then
+			stopFlying()
+			return
+		end
+
+		local moveDirection = Vector3.zero
+		if keys.W then moveDirection += camera.CFrame.LookVector end
+		if keys.S then moveDirection -= camera.CFrame.LookVector end
+		if keys.A then moveDirection -= camera.CFrame.RightVector end
+		if keys.D then moveDirection += camera.CFrame.RightVector end
+		if keys.Space then moveDirection += Vector3.new(0, 1, 0) end
+		if keys.Shift then moveDirection -= Vector3.new(0, 1, 0) end
+
+		if moveDirection.Magnitude > 0 then
+			moveDirection = moveDirection.Unit
+		end
+
+		bodyVelocity.Velocity = moveDirection * flySpeed
+		bodyGyro.CFrame = camera.CFrame
+	end)
+end
+
+flyButton.MouseButton1Click:Connect(function()
+	if not unlocked then return end
+	if flying then
+		stopFlying()
+	else
+		startFlying()
+	end
+end)
+
+speedPlus.MouseButton1Click:Connect(function()
+	flySpeed = math.clamp(flySpeed + 10, 10, 200)
+	speedLabel.Text = "Flight Speed: " .. flySpeed
+end)
+
+speedMinus.MouseButton1Click:Connect(function()
+	flySpeed = math.clamp(flySpeed - 10, 10, 200)
+	speedLabel.Text = "Flight Speed: " .. flySpeed
+end)
+
+jumpButton.MouseButton1Click:Connect(function()
+	infiniteJump = not infiniteJump
+	jumpButton.Text = infiniteJump and "🦘 Infinite Jump: ON" or "🦘 Infinite Jump: OFF"
+	jumpButton.BackgroundColor3 = infiniteJump and COLORS.AccentDark or COLORS.Button
+end)
+
+noclipButton.MouseButton1Click:Connect(function()
+	noclip = not noclip
+	noclipButton.Text = noclip and "🧱 Noclip: ON" or "🧱 Noclip: OFF"
+	noclipButton.BackgroundColor3 = noclip and COLORS.AccentDark or COLORS.Button
+end)
+
+walkPlus.MouseButton1Click:Connect(function()
+	walkSpeed = math.clamp(walkSpeed + 2, 8, 50)
+	walkLabel.Text = "WalkSpeed: " .. walkSpeed
+end)
+
+walkMinus.MouseButton1Click:Connect(function()
+	walkSpeed = math.clamp(walkSpeed - 2, 8, 50)
+	walkLabel.Text = "WalkSpeed: " .. walkSpeed
+end)
+
+local function removeTag(targetPlayer)
+	local data = trackedTags[targetPlayer]
+	if not data then return end
+	if data.billboard then
+		data.billboard:Destroy()
+	end
+	trackedTags[targetPlayer] = nil
+end
+
+local function createTag(targetPlayer, targetCharacter)
+	if targetPlayer == player then return end
+	if not targetCharacter then return end
+
+	local head = targetCharacter:FindFirstChild("Head")
+	local hrp = targetCharacter:FindFirstChild("HumanoidRootPart")
+	local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
+	if not head or not hrp or not hum then return end
+
+	removeTag(targetPlayer)
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "LucienTag"
+	billboard.Size = UDim2.new(0, 110, 0, 28)
+	billboard.StudsOffset = Vector3.new(0, 3.8, 0)
+	billboard.MaxDistance = 220
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = head
+	billboard.Parent = playerGui
+
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = COLORS.Top
+	bg.BackgroundTransparency = 0.15
+	bg.BorderSizePixel = 0
+	bg.Parent = billboard
+	makeCorner(bg, 8)
+
+	local bgStroke = Instance.new("UIStroke")
+	bgStroke.Color = COLORS.Line
+	bgStroke.Parent = bg
+
+	local bgGlow = Instance.new("UIStroke")
+	bgGlow.Color = COLORS.Glow
+	bgGlow.Thickness = 3
+	bgGlow.Transparency = 0.86
+	bgGlow.Parent = bg
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Size = UDim2.new(1, -6, 0.55, 0)
+	nameLabel.Position = UDim2.new(0, 3, 0, 0)
+	nameLabel.Text = targetPlayer.DisplayName
+	nameLabel.TextColor3 = COLORS.Text
+	nameLabel.TextSize = 10
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextWrapped = true
+	nameLabel.Parent = bg
+
+	local distanceLabel = Instance.new("TextLabel")
+	distanceLabel.BackgroundTransparency = 1
+	distanceLabel.Size = UDim2.new(1, -6, 0.45, 0)
+	distanceLabel.Position = UDim2.new(0, 3, 0.5, 0)
+	distanceLabel.Text = "0 studs"
+	distanceLabel.TextColor3 = COLORS.SubText
+	distanceLabel.TextSize = 9
+	distanceLabel.Font = Enum.Font.Gotham
+	distanceLabel.Parent = bg
+
+	trackedTags[targetPlayer] = {
+		character = targetCharacter,
+		billboard = billboard,
+		bg = bg,
+		bgStroke = bgStroke,
+		nameLabel = nameLabel,
+		distanceLabel = distanceLabel
+	}
+end
+
+local function setTagsEnabled(state)
+	tagsEnabled = state
+	tagsButton.Text = state and "🏷 Tags: ON" or "🏷 Tags: OFF"
+	tagsButton.BackgroundColor3 = state and COLORS.AccentDark or COLORS.Button
+
+	if not state then
+		for targetPlayer in pairs(trackedTags) do
+			removeTag(targetPlayer)
+		end
+	else
+		for _, otherPlayer in ipairs(Players:GetPlayers()) do
+			if otherPlayer ~= player and otherPlayer.Character then
+				createTag(otherPlayer, otherPlayer.Character)
+			end
+		end
+	end
+end
+
+tagsButton.MouseButton1Click:Connect(function()
+	setTagsEnabled(not tagsEnabled)
+end)
+
+statsButton.MouseButton1Click:Connect(function()
+	statsOverlayEnabled = not statsOverlayEnabled
+	statsButton.Text = statsOverlayEnabled and "📊 Stats Overlay: ON" or "📊 Stats Overlay: OFF"
+	statsButton.BackgroundColor3 = statsOverlayEnabled and COLORS.AccentDark or COLORS.Button
+	overlayFrame.Visible = unlocked and statsOverlayEnabled
+end)
+
+topLeftButton.MouseButton1Click:Connect(function()
+	setOverlayCorner("Top Left")
+	updateOverlayCornerButtonColors()
+end)
+
+topRightButton.MouseButton1Click:Connect(function()
+	setOverlayCorner("Top Right")
+	updateOverlayCornerButtonColors()
+end)
+
+bottomLeftButton.MouseButton1Click:Connect(function()
+	setOverlayCorner("Bottom Left")
+	updateOverlayCornerButtonColors()
+end)
+
+bottomRightButton.MouseButton1Click:Connect(function()
+	setOverlayCorner("Bottom Right")
+	updateOverlayCornerButtonColors()
+end)
+
+fovPlus.MouseButton1Click:Connect(function()
+	camera.FieldOfView = math.clamp(camera.FieldOfView + 5, 40, 120)
+	fovLabelUI.Text = "Camera FOV: " .. math.floor(camera.FieldOfView)
+end)
+
+fovMinus.MouseButton1Click:Connect(function()
+	camera.FieldOfView = math.clamp(camera.FieldOfView - 5, 40, 120)
+	fovLabelUI.Text = "Camera FOV: " .. math.floor(camera.FieldOfView)
+end)
+
+circleToggle.MouseButton1Click:Connect(function()
+	fovCircle.Visible = not fovCircle.Visible
+	circleToggle.Text = fovCircle.Visible and "⭕ FOV Circle: ON" or "⭕ FOV Circle: OFF"
+	circleToggle.BackgroundColor3 = fovCircle.Visible and COLORS.AccentDark or COLORS.Button
+end)
+
+circlePlus.MouseButton1Click:Connect(function()
+	local size = math.clamp(fovCircle.AbsoluteSize.X + 20, 60, 500)
+	fovCircle.Size = UDim2.new(0, size, 0, size)
+	circleLabel.Text = "FOV Circle Size: " .. math.floor(size)
+end)
+
+circleMinus.MouseButton1Click:Connect(function()
+	local size = math.clamp(fovCircle.AbsoluteSize.X - 20, 60, 500)
+	fovCircle.Size = UDim2.new(0, size, 0, size)
+	circleLabel.Text = "FOV Circle Size: " .. math.floor(size)
+end)
+
+tpButton.MouseButton1Click:Connect(function()
+	teleportClickEnabled = not teleportClickEnabled
+	tpButton.Text = teleportClickEnabled and "📍 Click Teleport: ON" or "📍 Click Teleport: OFF"
+	tpButton.BackgroundColor3 = teleportClickEnabled and COLORS.AccentDark or COLORS.Button
+end)
+
+mouse.Button1Down:Connect(function()
+	if not unlocked or not teleportClickEnabled or clickTpDebounce then return end
+	if not rootPart then return end
+
+	clickTpDebounce = true
+	refreshCharacter()
+
+	local hit = mouse.Hit
+	if hit then
+		rootPart.CFrame = CFrame.new(hit.Position + Vector3.new(0, 3, 0))
+	end
+
+	task.wait(0.08)
+	clickTpDebounce = false
+end)
+
+blueThemeButton.MouseButton1Click:Connect(function()
+	applyTheme("Blue")
+end)
+
+redThemeButton.MouseButton1Click:Connect(function()
+	applyTheme("Red")
+end)
+
+whiteThemeButton.MouseButton1Click:Connect(function()
+	applyTheme("White")
+end)
+
+for _, otherPlayer in ipairs(Players:GetPlayers()) do
+	if otherPlayer ~= player then
+		otherPlayer.CharacterAdded:Connect(function(newCharacter)
+			task.wait(0.2)
+			if tagsEnabled then
+				createTag(otherPlayer, newCharacter)
+			end
+			if currentTab == "Friends" then
+				buildFriendsList()
+			elseif currentTab == "Teleport" then
+				buildTeleportList()
+			end
+		end)
+
+		otherPlayer.CharacterRemoving:Connect(function()
+			removeTag(otherPlayer)
+			if currentTab == "Friends" then
+				buildFriendsList()
+			elseif currentTab == "Teleport" then
+				buildTeleportList()
+			end
+		end)
+	end
+end
+
+Players.PlayerAdded:Connect(function(otherPlayer)
+	if otherPlayer == player then return end
+
+	otherPlayer.CharacterAdded:Connect(function(newCharacter)
+		task.wait(0.2)
+		if tagsEnabled then
+			createTag(otherPlayer, newCharacter)
+		end
+		if currentTab == "Friends" then
+			buildFriendsList()
+		elseif currentTab == "Teleport" then
+			buildTeleportList()
+		end
+	end)
+
+	otherPlayer.CharacterRemoving:Connect(function()
+		removeTag(otherPlayer)
+		if currentTab == "Friends" then
+			buildFriendsList()
+		elseif currentTab == "Teleport" then
+			buildTeleportList()
+		end
+	end)
+end)
+
+Players.PlayerRemoving:Connect(function(otherPlayer)
+	removeTag(otherPlayer)
+	if currentTab == "Friends" then
+		buildFriendsList()
+	elseif currentTab == "Teleport" then
+		buildTeleportList()
+	end
+end)
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.KeyCode == Enum.KeyCode.RightShift and unlocked then
+		setMenuOpen(not menuOpen)
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.W then keys.W = true end
+	if input.KeyCode == Enum.KeyCode.A then keys.A = true end
+	if input.KeyCode == Enum.KeyCode.S then keys.S = true end
+	if input.KeyCode == Enum.KeyCode.D then keys.D = true end
+
+	if input.KeyCode == Enum.KeyCode.Space then
+		keys.Space = true
+		if infiniteJump and humanoid then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		keys.Shift = true
+	end
+end)
+
+UIS.InputEnded:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.W then keys.W = false end
+	if input.KeyCode == Enum.KeyCode.A then keys.A = false end
+	if input.KeyCode == Enum.KeyCode.S then keys.S = false end
+	if input.KeyCode == Enum.KeyCode.D then keys.D = false end
+	if input.KeyCode == Enum.KeyCode.Space then keys.Space = false end
+	if input.KeyCode == Enum.KeyCode.LeftShift then keys.Shift = false end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+	if not unlocked then return end
+
+	refreshCharacter()
+
+	if humanoid then
+		humanoid.WalkSpeed = walkSpeed
+	end
+
+	if noclip and character then
+		for _, part in ipairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end
+
+	if tagsEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+		local myRoot = player.Character.HumanoidRootPart
+
+		for targetPlayer, data in pairs(trackedTags) do
+			local targetCharacter = targetPlayer.Character
+			if not targetCharacter or not targetCharacter.Parent then
+				removeTag(targetPlayer)
+			else
+				local currentHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
+				local currentHead = targetCharacter:FindFirstChild("Head")
+				local currentHum = targetCharacter:FindFirstChildOfClass("Humanoid")
+
+				if not currentHRP or not currentHead or not currentHum or currentHum.Health <= 0 then
+					removeTag(targetPlayer)
+				else
+					local distance = (currentHRP.Position - myRoot.Position).Magnitude
+					data.distanceLabel.Text = math.floor(distance) .. " studs"
+					local _, onScreen = camera:WorldToViewportPoint(currentHead.Position)
+					data.billboard.Enabled = onScreen and distance <= 220
+				end
+			end
+		end
+	end
+
+	if statsOverlayEnabled then
+		fpsFrames += 1
+		fpsTimer += dt
+		if fpsTimer >= 1 then
+			currentFPS = math.floor(fpsFrames / fpsTimer)
+			fpsFrames = 0
+			fpsTimer = 0
+
+			fpsLabel.Text = "FPS: " .. tostring(currentFPS)
+
+			local pingValue = 0
+			pcall(function()
+				pingValue = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+			end)
+			pingLabel.Text = "Ping: " .. tostring(pingValue) .. " ms"
+		end
+	end
+end)
+
+task.defer(function()
+	if playerOwnsPass() then
+		setUnlockedState(true)
+	else
+		setUnlockedState(false)
+	end
+end)
+
+switchTab("Movement")
+updateOverlayCornerButtonColors()
+updateThemeButtonColors()
+applyTheme(currentThemeName)
